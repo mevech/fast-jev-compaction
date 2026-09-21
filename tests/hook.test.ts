@@ -55,9 +55,10 @@ describe('hook config', () => {
   it('reads userConfig values and falls back to defaults', () => {
     expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.25, model: 'jev-latest' });
     expect(
-      resolveHookConfig({ apiKey: 'k', keepThreshold: 0.3, maxStateTokens: 1000, model: 'jev-x', goal: 'g', compactAtPercent: 'no' }),
+      resolveHookConfig({ apiKey: 'k', baseUrl: 'http://mini:8321/v1/systemone', keepThreshold: 0.3, maxStateTokens: 1000, model: 'jev-x', goal: 'g', compactAtPercent: 'no' }),
     ).toEqual({
       apiKey: 'k',
+      baseUrl: 'http://mini:8321/v1/systemone',
       keepThreshold: 0.3,
       maxStateTokens: 1000,
       model: 'jev-x',
@@ -125,6 +126,18 @@ describe('compactSession', () => {
     expect(summarize(output)).toMatch(/^\d+% reduction; 1 kept, 1 call_dropped; state ~\d+ tokens \(full\) in 1 request\(s\)$/);
     expect(decisionLog(output)).toBe('t1:Read:drop_call/call=0.10/result=0.10 t2:Bash:keep/call=0.90/result=0.90');
     expect(decisionLogLines(output)).toEqual([`decisions: ${decisionLog(output)}`]);
+  });
+
+  it('sends requests to the configured baseUrl and to System One by default', async () => {
+    const urls: string[] = [];
+    const recordUrl = (fetchFn: ReturnType<typeof jevFetch>) => async (url: string, init?: Parameters<typeof fetchFn>[1]) => {
+      urls.push(url);
+      return fetchFn(url, init);
+    };
+    const base = { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k' };
+    await compactSession(transcript(), base, recordUrl(jevFetch(() => 0.9)));
+    await compactSession(transcript(), { ...base, baseUrl: 'http://mini:8321/v1/systemone' }, recordUrl(jevFetch(() => 0.9)));
+    expect(urls).toEqual(['https://api.typesafe.ai/v1/systemone', 'http://mini:8321/v1/systemone']);
   });
 
   it('splits a long decision log into ui.log lines under the host limit', async () => {
